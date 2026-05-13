@@ -1,0 +1,1 @@
+# detector_scam_bot
