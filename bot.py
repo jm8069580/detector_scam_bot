@@ -1,7 +1,6 @@
 import logging
 import os
-import psycopg2
-import psycopg2.extras
+import psycopg
 from datetime import datetime
 from flask import Flask, jsonify
 from threading import Thread
@@ -20,11 +19,10 @@ def get_conn():
     """
     DATABASE_URL = os.environ.get("DATABASE_URL")
     if not DATABASE_URL:
-        raise RuntimeError("❌ No se encontró DATABASE_URL en las variables de entorno.")
-    # psycopg2 necesita 'postgresql://' en lugar de 'postgres://' (que usa Render)
+        raise RuntimeError("❌ No se encontró DATABASE_URL")
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    return psycopg2.connect(DATABASE_URL, sslmode="require")
+    return psycopg.connect(DATABASE_URL)
 
 def init_db():
     """Crea la tabla detecciones si no existe."""
@@ -85,7 +83,7 @@ def obtener_detecciones(limite=50):
     """Devuelve las últimas N detecciones como lista de dicts."""
     conn = get_conn()
     try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("""
                 SELECT id, fecha, usuario, user_id, chat_id, chat_nombre, tipo_alerta, mensaje
                 FROM detecciones
