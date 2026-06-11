@@ -1,6 +1,6 @@
 import logging
 import os
-import psycopg
+import psycopg2
 from datetime import datetime
 from flask import Flask, jsonify
 from threading import Thread
@@ -19,10 +19,11 @@ def get_conn():
     """
     DATABASE_URL = os.environ.get("DATABASE_URL")
     if not DATABASE_URL:
-        raise RuntimeError("❌ No se encontró DATABASE_URL")
+        raise RuntimeError("❌ No se encontró DATABASE_URL en las variables de entorno.")
+    # psycopg2 necesita 'postgresql://' en lugar de 'postgres://' (que usa Render)
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    return psycopg.connect(DATABASE_URL)
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 def init_db():
     """Crea la tabla detecciones si no existe."""
@@ -83,18 +84,17 @@ def obtener_detecciones(limite=50):
     """Devuelve las últimas N detecciones como lista de dicts."""
     conn = get_conn()
     try:
-        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        with conn.cursor() as cur:
             cur.execute("""
                 SELECT id, fecha, usuario, user_id, chat_id, chat_nombre, tipo_alerta, mensaje
                 FROM detecciones
                 ORDER BY fecha DESC
                 LIMIT %s
             """, (limite,))
-            rows = cur.fetchall()
-            # Convertir fecha a string para JSON
+            cols = [desc[0] for desc in cur.description]
             result = []
-            for row in rows:
-                r = dict(row)
+            for row in cur.fetchall():
+                r = dict(zip(cols, row))
                 r["fecha"] = r["fecha"].strftime("%Y-%m-%d %H:%M:%S") if r["fecha"] else None
                 result.append(r)
             return result
@@ -105,14 +105,15 @@ def obtener_estadisticas():
     """Devuelve totales agrupados por tipo de alerta."""
     conn = get_conn()
     try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with conn.cursor() as cur:
             cur.execute("""
                 SELECT tipo_alerta, COUNT(*) AS total
                 FROM detecciones
                 GROUP BY tipo_alerta
                 ORDER BY total DESC
             """)
-            return [dict(row) for row in cur.fetchall()]
+            cols = [desc[0] for desc in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -120,7 +121,7 @@ def obtener_usuarios_frecuentes(limite=10):
     """Devuelve los usuarios con más detecciones."""
     conn = get_conn()
     try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with conn.cursor() as cur:
             cur.execute("""
                 SELECT usuario, COUNT(*) AS total
                 FROM detecciones
@@ -128,7 +129,8 @@ def obtener_usuarios_frecuentes(limite=10):
                 ORDER BY total DESC
                 LIMIT %s
             """, (limite,))
-            return [dict(row) for row in cur.fetchall()]
+            cols = [desc[0] for desc in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
     finally:
         conn.close()
 
